@@ -1,6 +1,6 @@
 ### Utility functions for mortality-unemployment paper
 ### Insang Song
-### 01/12/2023
+### 01/11/2023
 
 ### Fitting INLA model ####
 # form: formula
@@ -39,14 +39,14 @@ fit_inla_spt <- function(form = form.bp, data, dis = 'Allcauses',
     data.pu <- data.pu %>% mutate(Mortrate = log(Mortrate))
     if (logarithm_all) {
       data.pu <- data.pu %>% 
-        mutate_at(.vars = vars(PELDER, PNONWHITE, MEDINCOME, PUNIVABOVE, PPOVTBELOW, PRURAL, PRENTER, PHSINGLE, UELAG1, UELAG2), 
+        mutate_at(.vars = vars(PELDER, PNONWHITE, MEDINCOME, PUNIVABOVE, PPOVTBELOW, PRURAL, PRENTER, PHSINGLE, UELAG1), 
                   .funs = list(~ifelse(min(.)==0, log(.+1), log(.)))) %>%
         arrange(year, GEOID) # 102220
     }
   }
   if (standardize == TRUE){
     data.pu <- data.pu %>% 
-      mutate_at(.vars = vars(PELDER, PNONWHITE, MEDINCOME, PUNIVABOVE, PPOVTBELOW, PRURAL, PRENTER, PHSINGLE, UELAG1, UELAG2), .funs = list(~scale(.))) %>%
+      mutate_at(.vars = vars(PELDER, PNONWHITE, MEDINCOME, PUNIVABOVE, PPOVTBELOW, PRURAL, PRENTER, PHSINGLE, UELAG1), .funs = list(~scale(.))) %>%
       arrange(year, GEOID) # 102220
       if (!logarithm) {
         data.pu = data.pu %>% mutate(Mortrate = as.vector(scale(Mortrate)))
@@ -105,22 +105,26 @@ fit_inla_spt <- function(form = form.bp, data, dis = 'Allcauses',
 
 
 # inla_res: inla model fit results
+# assumption--the data with covariates is sorted in temporal-spatial order;
+# (cont'd) e.g., spid 1 2 3 ... n_s 1 2 3 ... | timeid 1 1 1 ... 1 2 2 2 ...
 # mapo: original map you want to use for mapping. Should be intact with unique county IDs names "GEOID"
 # year_select: which year you want to choose to visualize
 # style_cl: see style argument description in ?tmap::tm_fill
 # mapping: print map while returning a cleaned data.frame object
 # rand.d: the random effect included in the inla object. depending on the model specification (i.e., formula)
-map_inla_rs <- function(inla_res, mapo, year_select = 2009, style_cl = 'cont', mapping = FALSE, rand.d = 1){
+map_inla_rs <- function(inla_res, mapo, year_select = 2009, style_cl = 'cont', mapping = FALSE, rand.d = 1, additional = FALSE){
   mapo.base <- mapo %>% 
     dplyr::select(GEOID) %>% 
     arrange(GEOID)
+
+  nspatial = length(unique(inla_res$.args$data$GEOID))
 
   if (is.null(rand.d)){
       ind <- dim(inla_res$summary.lincomb.derived)[1]
   } else {
       ind <- dim(inla_res$summary.random[[rand.d]])[1]
         if (rand.d %in% c(1, 3, 5)){
-        ind <- ind / 2
+        ind <- ind #/ 2
         }
   }
 
@@ -131,13 +135,13 @@ map_inla_rs <- function(inla_res, mapo, year_select = 2009, style_cl = 'cont', m
       inla_res.mean1 <- inla_res.mean %>% 
         filter(ID %in% 1:3108) %>% 
         data.frame %>% 
-        mutate(year = rep(2001:2014, each=3108)) %>% 
+        mutate(year = rep(2001:2014, each=nspatial)) %>% 
         mutate(GEOID = rep(mapo.base$GEOID,  14)) 
         if (!is.null(mode)){
             inla_res.mean2 <-  inla_res.mean %>% 
-                filter(ID %in% 3109:6216) %>% 
+                filter(ID %in% (nspatial+1):(2*nspatial)) %>% 
                 data.frame %>% 
-                mutate(year = rep(2001:2014, each=3108)) %>% 
+                mutate(year = rep(2001:2014, each=nspatial)) %>% 
                 mutate(GEOID = rep(mapo.base$GEOID,  14)) 
             inla_res.mean1 <- inla_res.mean1 %>%
                 mutate(mean = mean + inla_res.mean2$mean)                
@@ -145,13 +149,13 @@ map_inla_rs <- function(inla_res, mapo, year_select = 2009, style_cl = 'cont', m
     } else {
       inla_res.mean1 <- inla_res.mean %>% 
         mutate(year = year_select) %>% 
-        filter(ID %in% 1:3108) %>%
+        filter(ID %in% 1:nspatial) %>%
         mutate(GEOID = mapo.base$GEOID)
     }
     
   } else {
     inla_res.mean1 <- inla_res$summary.lincomb.derived %>%
-      mutate(year = rep(2001:2014,  each = 3108)) %>% 
+      mutate(year = rep(2001:2014,  each = nspatial)) %>% 
       mutate(GEOID = rep(mapo.base$GEOID, 14)) 
       if (additional) {
         inla_res.mean1 = inla_res.mean1 %>%
@@ -199,7 +203,7 @@ map_dexport <- function(idata, map = mort.simp, rand.d = 5, file.export = FALSE,
   } else {
       ind <- dim(idata$summary.random[[rand.d]])[1]
         if (rand.d %in% c(1, 3, 5)){
-        ind <- ind / 2
+        ind <- ind #/ 2
         }
   }
 
